@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "edge";
 
+const AIRTABLE_API_KEY = "patitOHNhbvRSL5ao.82017354382680e3dfbe9259e6fd446fd1c9f2d90bc52225d4e14d3d7d53068f";
+const AIRTABLE_BASE_ID = "appQ1jsnnFpGWs00U";
+const AIRTABLE_TABLE_NAME = "預約表";
+
 const LINE_CHANNEL_ACCESS_TOKEN = "aYoHZr2pMButKIE7/gxjt6Ei3r8f/myPXF6nP1Akxl9ig8STOd/Fpub8lEXWU85GhXDcdDSfDV1bHlAVgV22qrzP84B9qnzQ6KxOFmAY1auzkGkzmZOXr07CIu/Co53PjqXoMYG0BFZprhRdmBsO9AdB04t89/1O/w1cDnyilFU=";
 
 function extractTimeFromDate(dateString: string): string {
@@ -15,28 +19,24 @@ function extractTimeFromDate(dateString: string): string {
   });
 }
 
-async function sendReminder(userId: string, date: string) {
-  const time = extractTimeFromDate(date);
-  const message = `嗨嗨~🔉預約提醒通知\n我們明天 ${time} 見唷🌝🌝`;
+async function getReservationByUserId(userId: string) {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE_NAME)}?filterByFormula=({userId}='${userId}')&maxRecords=1`;
 
-  const res = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
+  const res = await fetch(url, {
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-    },
-    body: JSON.stringify({
-      to: userId,
-      messages: [
-        {
-          type: "text",
-          text: message,
-        },
-      ],
-    }),
+      Authorization: `Bearer ${AIRTABLE_API_KEY}`
+    }
   });
 
-  return res;
+  if (!res.ok) {
+    throw new Error(`Airtable API error: ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  if (!data.records || data.records.length === 0) {
+    return null;
+  }
+  return data.records[0];
 }
 
 export async function POST(req: NextRequest) {
@@ -47,38 +47,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "缺少 userId 或 date" }, { status: 400 });
     }
 
-    const res = await sendReminder(userId, date);
+    // 從 Airtable 「預約表」查詢該 userId 的預約
+    const reservation = await getReservationByUserId(userId);
+    if (!reservation) {
+      return NextResponse.json({ error: "找不到預約資料" }, { status: 404 });
+    }
 
-    if (!res.ok) {
-      const errText = await res.text();
+    // 時間字串格式化
+    const time = extractTimeFromDate(date);
+    const message = `嗨嗨~🔉預約提醒通知\n我們明天 ${time} 見唷🌝🌝`;
+
+    // 呼叫 LINE 推播訊息 API
+    const lineRes = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+      body: JSON.stringify({
+        to: userId,
+        messages: [{ type: "text", text: message }]
+      }),
+    });
+
+    if (!lineRes.ok) {
+      const errText = await lineRes.text();
       return NextResponse.json({ error: "LINE 發送失敗", detail: errText }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: "伺服器錯誤", detail: err.message }, { status: 500 });
-  }
-}
 
-export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get("userId") ?? "";
-    const date = searchParams.get("date") ?? "";
-
-    if (!userId || !date) {
-      return NextResponse.json({ error: "缺少 userId 或 date" }, { status: 400 });
-    }
-
-    const res = await sendReminder(userId, date);
-
-    if (!res.ok) {
-      const errText = await res.text();
-      return NextResponse.json({ error: "LINE 發送失敗", detail: errText }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: "伺服器錯誤", detail: err.message }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({ error: "伺服器錯誤", detail: error.message }, { status: 500 });
   }
 }
