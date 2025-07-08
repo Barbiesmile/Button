@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 從 Airtable 「預約表」查詢該 userId 的預約
-    const reservation = await getReservationByUserId(userId);
+    const reservation = await getReservationByUserId(userId_);
     if (!reservation) {
       return NextResponse.json({ error: "找不到預約資料" }, { status: 404 });
     }
