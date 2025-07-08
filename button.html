@@ -15,6 +15,30 @@ function extractTimeFromDate(dateString: string): string {
   });
 }
 
+async function sendReminder(userId: string, date: string) {
+  const time = extractTimeFromDate(date);
+  const message = `嗨嗨~🔉預約提醒通知\n我們明天 ${time} 見唷🌝🌝`;
+
+  const res = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({
+      to: userId,
+      messages: [
+        {
+          type: "text",
+          text: message,
+        },
+      ],
+    }),
+  });
+
+  return res;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { userId, date } = await req.json();
@@ -23,25 +47,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "缺少 userId 或 date" }, { status: 400 });
     }
 
-    const time = extractTimeFromDate(date);
-    const message = `嗨嗨~🔉預約提醒通知\n我們明天 ${time} 見唷🌝🌝`;
+    const res = await sendReminder(userId, date);
 
-    const res = await fetch("https://api.line.me/v2/bot/message/push", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-      },
-      body: JSON.stringify({
-        to: userId,
-        messages: [
-          {
-            type: "text",
-            text: message,
-          },
-        ],
-      }),
-    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return NextResponse.json({ error: "LINE 發送失敗", detail: errText }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: "伺服器錯誤", detail: err.message }, { status: 500 });
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get("userId") ?? "";
+    const date = searchParams.get("date") ?? "";
+
+    if (!userId || !date) {
+      return NextResponse.json({ error: "缺少 userId 或 date" }, { status: 400 });
+    }
+
+    const res = await sendReminder(userId, date);
 
     if (!res.ok) {
       const errText = await res.text();
