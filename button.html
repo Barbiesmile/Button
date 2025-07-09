@@ -3,11 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "edge";
 
-const AIRTABLE_API_KEY = "patitOHNhbvRSL5ao.82017354382680e3dfbe9259e6fd446fd1c9f2d90bc52225d4e14d3d7d53068f";
-const AIRTABLE_BASE_ID = "appQ1jsnnFpGWs00U";
-const AIRTABLE_TABLE_ID = "tblrtMjtPuEIrHC3U";
-
-const LINE_CHANNEL_ACCESS_TOKEN = "aYoHZr2pMButKIE7/gxjt6Ei3r8f/myPXF6nP1Akxl9ig8STOd/Fpub8lEXWU85GhXDcdDSfDV1bHlAVgV22qrzP84B9qnzQ6xOFmAY1auzkGkzmZOXr07CIu/Co53PjqXoMYG0BFZprhRdmBsO9AdB04t89/1O/w1cDnyilFU=";
+// ✅ 使用環境變數（請在 Vercel 或本地 .env 設定這些）
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY!;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
+const AIRTABLE_TABLE_ID = process.env.AIRTABLE_TABLE_ID!;
+const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN!;
 
 function extractTimeFromDate(dateString: string): string {
   const date = new Date(dateString);
@@ -29,7 +29,7 @@ async function getReservationByUserId(userId: string) {
   });
 
   if (!res.ok) {
-    throw new Error(`Airtable API error: ${res.statusText}`);
+    throw new Error(`Airtable API error: ${res.status} - ${res.statusText}`);
   }
 
   const data = await res.json();
@@ -71,10 +71,19 @@ async function handleSendMessage(userId: string, date: string) {
 
   if (!lineRes.ok) {
     const errText = await lineRes.text();
-    return NextResponse.json({ error: "LINE 發送失敗", detail: errText }, { status: 500 });
+    return NextResponse.json({
+      error: "LINE 發送失敗",
+      status: lineRes.status,
+      detail: errText
+    }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    message: "訊息已成功發送給 LINE 用戶",
+    userId,
+    time
+  });
 }
 
 export async function POST(req: NextRequest) {
